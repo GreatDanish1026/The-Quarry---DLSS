@@ -1053,3 +1053,22 @@ Changes from 1.0.0 (details under "Frame Generation spike"):
   after any TAAU fallback and held off for 30 DLSS frames after a swap chain resize.
 - The release zip bundles the NVIDIA runtime: `nvngx_dlss.dll`, `nvngx_dlssg.dll` and the
   five Streamline DLLs, with their licence texts (`build.ps1 -Package`).
+
+### 1.1.1: colour-format crash fix (2026-10-22)
+
+- A user report showed UE's "AllocateTexture ... DXGI_ERROR_DEVICE_REMOVED" dialog. That's the
+  same signature as DarkPicturesDLSS 0.1.0 on The Devil in Me: the lighting clamp pass made an
+  RGBA16F SRV of the game's scene colour regardless of its format. On an R11G11B10F scene
+  colour (`r.SceneColorFormat` lowered by settings or mods), that view is invalid and D3D12
+  removes the device (INVALID_CALL) on the first DLSS frame. QuarryDLSS 1.0.0 and 1.1.0 have
+  this bug. 1.0.0 also has the F11 resize hang (fixed in 1.1.0).
+- 1.1.1 is v1.1.0 plus the shared fix from the `dark-pictures` branch (d8cecf4):
+  - colour, velocity and depth views use the texture's own format;
+  - unsupported formats are refused with a status line;
+  - the game's input formats are logged once per change.
+- "Stabilise screen-space lighting" is off by default (as in DarkPicturesDLSS 0.1.10). It
+  only matters with the SSGI/SSR pak mods, and it's where both device-removal bugs were. Its
+  ReShade.ini key changed to `StabiliseScreenSpaceLighting`: 1.0/1.1 wrote the old default (on)
+  with every settings change, so the old key can't tell a choice from the default.
+- Not tested in game with an R11G11B10F scene colour on The Quarry. The same code runs on
+  The Devil in Me (R11G11B10F) without a crash.

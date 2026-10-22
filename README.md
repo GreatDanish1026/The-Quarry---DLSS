@@ -6,7 +6,7 @@ upscaler with DLSS, following the approach of
 [days-gone-dlss](https://github.com/teemupynnonen/days-gone-dlss), and can add generated
 frames on top through NVIDIA Streamline.
 
-Version **1.1.0**.
+Version **1.1.1**.
 
 ## Requirements
 
@@ -34,7 +34,8 @@ Version **1.1.0**.
 4. **In the NVIDIA App, turn off any DLSS Super Resolution model override for The
    Quarry.** It would replace the model this add-on asks for (see Known limits).
 
-Upgrading from 1.0.0: copy the new files over the old ones. Your settings carry over.
+Upgrading from 1.0.0 or 1.1.0: copy the new files over the old ones. Your settings carry over,
+except "Stabilise screen-space lighting", which 1.1.1 turns off for everyone (see Changes).
 
 ## Use
 
@@ -52,7 +53,7 @@ Press **Home** in game to open ReShade, then open the **Add-ons** tab and the
   Resolution on; the line under it says whether it's active. **Turning it on from Off
   needs a game restart**; changing the mode or turning it off works straight away.
 - **Advanced**: the DLSS model (J is recommended), a custom render scale, and
-  "Stabilise screen-space lighting", which helps with the SSGI/SSR pak mods.
+  "Stabilise screen-space lighting" (off by default; only useful with the SSGI/SSR pak mods).
 - **Diagnostics**: for troubleshooting and bug reports only.
 
 Settings are saved in `ReShade.ini` under `[QuarryDLSS]`.
@@ -71,6 +72,15 @@ Settings are saved in `ReShade.ini` under `[QuarryDLSS]`.
 - Some cutscene cuts briefly flash white. The game does this itself, and it happens with
   DLSS off too.
 - During loading and on camera-cut frames, the game's own upscaler is used for a frame.
+
+## Changes in 1.1.1
+
+- **Fixed a crash at startup** ("AllocateTexture ... DXGI_ERROR_DEVICE_REMOVED") when the
+  game's scene colour isn't 16-bit float, for example with lower graphics settings or mods
+  that change the scene colour format. The add-on now reads the game's textures in their own
+  formats, and refuses a format it can't read instead of crashing.
+- "Stabilise screen-space lighting" is now **off by default**, and switched off once for
+  everyone upgrading. Turn it back on under Advanced if you use the SSGI/SSR mods.
 
 ## Reporting a problem
 

@@ -542,6 +542,52 @@ bool EnsureHistory(device* dev, uint32_t w, uint32_t h) {
     return true;
 }
 
+// D3D12 removes the device (DXGI_ERROR_INVALID_CALL) for a view in a format the texture can't
+// take. The Devil in Me's scene colour is R11G11B10F where The Quarry and House of Ashes use
+// RGBA16F, and an RGBA16F view of it killed the game on its first DLSS frame. So views of the
+// game's textures use the texture's own format (typeless ones get the typed format the shader
+// reads), and a format a shader can't decode is refused: format::unknown.
+format VelocityViewFormat(format f) {  // dlss_prepare.hlsl decodes UE's 16-bit UNORM velocity
+    switch (f) {
+        case format::r16g16b16a16_unorm:
+        case format::r16g16b16a16_typeless: return format::r16g16b16a16_unorm;
+        case format::r16g16_unorm:
+        case format::r16g16_typeless: return format::r16g16_unorm;
+        default: return format::unknown;
+    }
+}
+
+format DepthViewFormat(format f) {  // the depth value in .r
+    switch (f) {
+        case format::r32_g8_typeless:
+        case format::d32_float_s8_uint:
+        case format::r32_float_x8_uint: return format::r32_float_x8_uint;
+        case format::r32_typeless:
+        case format::d32_float:
+        case format::r32_float: return format::r32_float;
+        case format::r24_g8_typeless:
+        case format::d24_unorm_s8_uint:
+        case format::r24_unorm_x8_uint: return format::r24_unorm_x8_uint;
+        case format::r16_typeless:
+        case format::d16_unorm:
+        case format::r16_unorm: return format::r16_unorm;
+        default: return format::unknown;
+    }
+}
+
+format ColorViewFormat(format f) {  // dlss_clamp.hlsl reads float RGB
+    switch (f) {
+        case format::r16g16b16a16_float:
+        case format::r16g16b16a16_typeless: return format::r16g16b16a16_float;
+        case format::r11g11b10_float: return format::r11g11b10_float;
+        case format::r32g32b32a32_float:
+        case format::r32g32b32a32_typeless: return format::r32g32b32a32_float;
+        case format::r10g10b10a2_unorm:
+        case format::r10g10b10a2_typeless: return format::r10g10b10a2_unorm;
+        default: return format::unknown;
+    }
+}
+
 resource_view GameUav(device* dev, resource res, format fmt) {
     auto it = g_uavs.find(res.handle);
     if (it != g_uavs.end()) return it->second;
@@ -705,9 +751,27 @@ Result Evaluate(const Frame& f) {
 
     // Our textures match the game's render-target size; only the render rect is used.
     const resource_desc velocityDesc = dev->get_resource_desc(f.velocity);
+    const format velocityFormat = VelocityViewFormat(velocityDesc.texture.format);
+    const format depthFormat = DepthViewFormat(dev->get_resource_desc(f.depth).texture.format);
+    {
+        // The game's formats, logged once per change (they differ between games).
+        static format logged[4] = {};
+        const format now[4] = {dev->get_resource_desc(f.color).texture.format, velocityDesc.texture.format,
+                               dev->get_resource_desc(f.depth).texture.format, dev->get_resource_desc(f.output).texture.format};
+        if (memcmp(logged, now, sizeof(now)) != 0) {
+            memcpy(logged, now, sizeof(now));
+            LOG("dlss: input formats (DXGI): colour %u, velocity %u, depth %u, output %u", static_cast<unsigned>(now[0]),
+                static_cast<unsigned>(now[1]), static_cast<unsigned>(now[2]), static_cast<unsigned>(now[3]));
+        }
+    }
+    if (velocityFormat == format::unknown || depthFormat == format::unknown) {
+        SetStatus("unsupported velocity or depth format (DXGI %u / %u)", static_cast<unsigned>(velocityDesc.texture.format),
+                  static_cast<unsigned>(dev->get_resource_desc(f.depth).texture.format));
+        return Result::skipped;
+    }
     if (!EnsureTextures(dev, velocityDesc.texture.width, velocityDesc.texture.height)) return Result::skipped;
-    const resource_view velocitySrv = GameSrv(dev, f.velocity, format::r16g16b16a16_unorm);
-    const resource_view depthSrv = GameSrv(dev, f.depth, format::r32_float_x8_uint);
+    const resource_view velocitySrv = GameSrv(dev, f.velocity, velocityFormat);
+    const resource_view depthSrv = GameSrv(dev, f.depth, depthFormat);
     if (!velocitySrv.handle || !depthSrv.handle) {
         SetStatus("could not create views of the game's velocity / depth");
         return Result::skipped;
@@ -874,11 +938,14 @@ Result Evaluate(const Frame& f) {
     g_histOutput = {};
     CollectLuma(dev, slot);
     if ((g_options.clampLightingHistory || g_options.logBrightness) && f.outX == 0 && f.outY == 0) {
+        // Only an RGBA16F output (the clamped copy has to match it exactly), and a colour
+        // format the clamp shader can read; check before creating any view.
         const resource_desc outDesc = dev->get_resource_desc(f.output);
-        const resource_view colorSrv = GameSrv(dev, f.color, format::r16g16b16a16_float);
-        const resource_view outUav = GameUav(dev, f.output, format::r16g16b16a16_float);
-        if (outDesc.texture.format == format::r16g16b16a16_float && colorSrv.handle && outUav.handle &&
-            EnsureHistory(dev, outDesc.texture.width, outDesc.texture.height)) {
+        const format colorFormat = ColorViewFormat(dev->get_resource_desc(f.color).texture.format);
+        const bool usable = outDesc.texture.format == format::r16g16b16a16_float && colorFormat != format::unknown;
+        const resource_view colorSrv = usable ? GameSrv(dev, f.color, colorFormat) : resource_view{};
+        const resource_view outUav = usable ? GameUav(dev, f.output, format::r16g16b16a16_float) : resource_view{};
+        if (usable && colorSrv.handle && outUav.handle && EnsureHistory(dev, outDesc.texture.width, outDesc.texture.height)) {
             cmd->barrier(g_luma[slot], resource_usage::unordered_access, resource_usage::copy_dest);
             cmd->copy_buffer_region(g_statsZero, 0, g_luma[slot], 0, kStatsWords * 4);
             cmd->barrier(g_luma[slot], resource_usage::copy_dest, resource_usage::unordered_access);
