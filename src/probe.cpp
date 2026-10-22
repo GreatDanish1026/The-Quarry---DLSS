@@ -1562,7 +1562,9 @@ void LoadSettings() {
     if (g_quality != kCustomQuality) g_forcePercentage = kQualityModes[g_quality].percentage;
     unsigned int preset = o.preset;
     if (reshade::get_config_value(nullptr, kConfigSection, "Preset", preset)) o.preset = preset;
-    reshade::get_config_value(nullptr, kConfigSection, "StabiliseLighting", o.clampLightingHistory);
+    // New key in 1.1.1: 1.0/1.1 saved the old default (on) with every setting change, so the
+    // old key can't tell a choice from the default. Everyone starts with it off.
+    reshade::get_config_value(nullptr, kConfigSection, "StabiliseScreenSpaceLighting", o.clampLightingHistory);
     Log("settings: DLSS %s, %s, render scale %.1f%%, preset %u, stabilise lighting %d", o.enabled ? "on" : "off",
         kQualityModes[g_quality].name, g_forcePercentage, o.preset, o.clampLightingHistory);
 }
@@ -1573,7 +1575,7 @@ void SaveSettings() {
     reshade::set_config_value(nullptr, kConfigSection, "Quality", kQualityModes[g_quality].key);
     reshade::set_config_value(nullptr, kConfigSection, "CustomScale", g_forcePercentage);
     reshade::set_config_value(nullptr, kConfigSection, "Preset", static_cast<unsigned int>(o.preset));
-    reshade::set_config_value(nullptr, kConfigSection, "StabiliseLighting", o.clampLightingHistory);
+    reshade::set_config_value(nullptr, kConfigSection, "StabiliseScreenSpaceLighting", o.clampLightingHistory);
 }
 
 // One plain line for the overlay.

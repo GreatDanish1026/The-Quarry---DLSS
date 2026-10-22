@@ -43,7 +43,10 @@ struct Options {
     bool mvJittered = false;  // DLSS feature flag; changing it recreates the feature
     bool invertMotion = false;  // DLSS MV scale -1: tests the motion vector sign
     bool ignoreVelocity = false;  // camera reprojection only: tests the game velocity decode
-    bool clampLightingHistory = true;  // give SSGI/SSR a clamped copy of the DLSS output
+    // Give SSGI/SSR a clamped copy of the DLSS output. Off by default since 1.1.1: it only
+    // matters with screen-space lighting mods, and its extra views and copies are the riskiest
+    // part of the add-on (both device-removal bugs so far were in it).
+    bool clampLightingHistory = false;
     bool passPreExposure = true;  // tell DLSS the game's per-frame pre-exposure
     bool gameExposure = true;  // give DLSS the game's eye adaptation instead of its auto exposure (recreates)
     // DLSS model preset hint (0 default, 5 E, 10 J, 11 K, 12 L, 13 M); recreates the feature.
